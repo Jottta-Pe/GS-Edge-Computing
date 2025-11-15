@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitoramento de Movimentação e Temperatura</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Playfair Display;
+      background-color: #d3d3d3;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+    }
+
+    h1 {
+      position: fixed; /* Faz o título ficar fixo */
+      top: 0;
+      width: 100%;
+      background-color: #333;
+      color: white;
+      font-size: 2.5em;
+      text-align: center;
+      padding: 30px 0;
+      margin: 0;
+      z-index: 10;
+    }
+
+    .container {
+      margin-top: 80px; /* Espaço para o título fixo */
+      width: 100%;
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+    }
+
+    .medicao {
+      font-size: 1.5em;
+      margin: 10px 0;
+      padding: 10px 25px;
+      border-radius: 10px;
+      background: linear-gradient(to right, #98e2d6, #0e8080);
+      color: white;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+    }
+
+    .nivel-movimentacao {
+      font-size: 1em;
+      margin: 10px 0;
+      padding: 10px 25px;
+      border-radius: 10px;
+      background: linear-gradient(to right, #214e5f, #6da3eb);
+      color: white;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+    }
+
+    .chart-container {
+      width: 95%;
+      max-width: 900px;
+      margin-top: 30px;
+      background: #fff;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+
+    /* Estilos do rodapé */
+    footer {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      background-color: #333;
+      color: white;
+      text-align: center;
+      padding: 1px;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <h1>Monitoramento de Temperatura e Movimentação</h1>
+
+  <div class="container">
+    <div class="medicao">🌡️ Temperatura: <span id="temperatura">--</span> °C</div>
+    <div class="nivel-movimentacao">🏃 Nível de Movimentação: <span id="nivelMovimento">--</span></div>
+
+    <div class="chart-container">
+      <canvas id="chartTemp"></canvas>
+    </div>
+
+    <div class="chart-container">
+      <canvas id="chartMovimento"></canvas>
+    </div>
+  </div>
+
+  <!-- Rodapé fixo -->
+  <footer>
+    <p>© 2025 Monitoramento de Saúde e Bem-Estar</p>
+  </footer>
+
+  <script>
+    // Configuração dos gráficos
+    const ctxTemp = document.getElementById('chartTemp').getContext('2d');
+    const ctxMovimento = document.getElementById('chartMovimento').getContext('2d');
+
+    const chartTemp = new Chart(ctxTemp, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Temperatura (°C)',
+          data: [],
+          borderColor: 'rgb(255, 99, 132)',
+          backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          fill: true,
+          tension: 0.2
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+          x: { title: { display: true, text: 'Tempo (mm:ss)' } },
+          y: { beginAtZero: false }
+        }
+      }
+    });
+
+    const chartMovimento = new Chart(ctxMovimento, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Movimentação',
+          data: [],
+          borderColor: 'rgb(75, 192, 192)',
+          backgroundColor: 'rgba(75, 192, 192, 0.2)',
+          fill: true,
+          tension: 0.2
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+          x: { title: { display: true, text: 'Tempo (mm:ss)' } },
+          y: { beginAtZero: false }
+        }
+      }
+    });
+
+    const MAX_PONTOS = 720; // 1 hora com atualização a cada 5s
+    let tempoSegundos = 0;
+
+    function formatarTempo(segundos) {
+      const minutos = Math.floor(segundos / 60);
+      const seg = segundos % 60;
+      return `${minutos.toString().padStart(2, '0')}:${seg.toString().padStart(2, '0')}`;
+    }
+
+    function calcularMagnitude(accel_x, accel_y, accel_z) {
+      return Math.sqrt(accel_x * accel_x + accel_y * accel_y + accel_z * accel_z);
+    }
+
+    function classificarMovimento(magnitude) {
+      if (magnitude < 1.5) {
+        return 'Baixo';
+      } else if (magnitude < 3.0) {
+        return 'Médio';
+      } else {
+        return 'Alto';
+      }
+    }
+
+    function atualizarDados() {
+      fetch('http://localhost:1880/DinoDadosTech') // Troque pelo IP correto
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('temperatura').textContent = data.temperature;
+
+          const magnitude = calcularMagnitude(data.accel_x, data.accel_y, data.accel_z);
+          const nivelMovimento = classificarMovimento(magnitude);
+          document.getElementById('nivelMovimento').textContent = nivelMovimento;
+
+          tempoSegundos += 5;
+          const tempoLabel = formatarTempo(tempoSegundos);
+
+          // Temperatura
+          chartTemp.data.labels.push(tempoLabel);
+          chartTemp.data.datasets[0].data.push(data.temperature);
+
+          // Nível de movimento (magnitude)
+          chartMovimento.data.labels.push(tempoLabel);
+          chartMovimento.data.datasets[0].data.push(magnitude);
+
+          // Mantém apenas 720 pontos (1h)
+          if (chartTemp.data.labels.length > MAX_PONTOS) {
+            chartTemp.data.labels.shift();
+            chartTemp.data.datasets[0].data.shift();
+          }
+          if (chartMovimento.data.labels.length > MAX_PONTOS) {
+            chartMovimento.data.labels.shift();
+            chartMovimento.data.datasets[0].data.shift();
+          }
+
+          chartTemp.update();
+          chartMovimento.update();
+        })
+        .catch(e => console.log("Falha ao buscar dados:", e));
+    }
+
+    // Atualiza ao carregar
+    atualizarDados();
+    // Atualiza a cada 5 segundos
+    setInterval(atualizarDados, 5000);
+  </script>
+</body>
+</html>
